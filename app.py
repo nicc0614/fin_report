@@ -14,32 +14,24 @@ import requests, re, time, pandas as pd
 from bs4 import BeautifulSoup
 import google.generativeai as genai
 
-
-# ---------------- Ngrok & Flask Setup ----------------
 app = Flask(__name__)
 
-
-
-# ---------------- LINE & Gemini Configuration ----------------
 configuration = Configuration(access_token=os.getenv('Line_channel_token'))
 line_handler = WebhookHandler(os.getenv('line_channel_secret'))
 genai.configure(api_key=os.getenv("google_API_KEY"))
 model = genai.GenerativeModel("gemini-2.0-flash-exp")
 
-# ---------------- State Management ----------------
-user_states = {}  # { user_id: {mode: ..., stock_id: ...} }
 
-# ---------------- Utility Functions ----------------
-def call_gemini_with_throttle(prompt, files=None):  # *** 已修改簽名，files 預設 None ***
+user_states = {} 
+
+
+def call_gemini_with_throttle(prompt, files=None):
     if files is None:
-        files = []  # *** 已新增：處理 None 轉為空列表 ***
-    time.sleep(0.6)  # *** 已新增：0.6 秒延遲以節流呼叫 ***
-    return model.generate_content([prompt] + files)  # *** 已維持呼叫邏輯 ***
+        files = []
+    time.sleep(0.6)  
+    return model.generate_content([prompt] + files)  
 
 def crawl_financial_data(stock_id):
-    import requests
-    from bs4 import BeautifulSoup
-    import pandas as pd
 
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
@@ -79,7 +71,6 @@ def crawl_financial_data(stock_id):
             df.columns = new_columns
             df = df[2:]
 
-            # 刪除不要的行：如『負債』、『股東權益』、『金額』
             df = df[~df['項目'].isin(['負債', '股東權益', '金額'])]
         else:
             print("⚠️ 表格行數不足無法處理欄位名稱")
@@ -88,10 +79,10 @@ def crawl_financial_data(stock_id):
         path = f"/content/{stock_id}_資產負債表.csv"
         df.to_csv(path, index=False, encoding="utf-8-sig")
         return path
-        # print(f"✅ 已匯出：{stock_id}_資產負債表.csv") # Commented out this line
 
 
-    def fetch_income_statement(stock_id: str): # Corrected function name
+
+    def fetch_income_statement(stock_id: str): 
         url = f'https://goodinfo.tw/tw/StockFinDetail.asp?RPT_CAT=IS_M_QUAR_ACC&STOCK_ID={stock_id}'
         res = requests.get(url, headers=headers)
         res.encoding = 'utf-8'
@@ -124,7 +115,7 @@ def crawl_financial_data(stock_id):
             df.columns = new_columns
             df = df[2:]
 
-            # 刪除不要的行：如『負債』、『股東權益』、『金額』
+
             df = df[~df['項目'].isin(['業外損益', '淨損益', '金額'])]
         else:
             print("⚠️ 表格行數不足無法處理欄位名稱")
@@ -132,10 +123,10 @@ def crawl_financial_data(stock_id):
         path = f"/content/{stock_id}_損益表.csv"
         df.to_csv(path, index=False, encoding="utf-8-sig")
         return path
-        # print(f"✅ 已匯出：{stock_id}_損益表.csv")] # Commented out this line and the extra bracket
 
 
-    def fetch_cashflow_sheet(stock_id: str): # Corrected function name
+
+    def fetch_cashflow_sheet(stock_id: str): 
         url = f'https://goodinfo.tw/tw/StockFinDetail.asp?RPT_CAT=CF_M_QUAR&STOCK_ID={stock_id}'
         res = requests.get(url, headers=headers)
         res.encoding = 'utf-8'
@@ -156,19 +147,19 @@ def crawl_financial_data(stock_id):
         df = pd.DataFrame(data)
 
         if len(df) > 2:
-            df.columns = df.iloc[0]  # 保留表頭（第一列）作為欄位名稱
-            df = df[1:].reset_index(drop=True)  # 從第三列開始取數據
-            df = df[df[df.columns[0]] != '金額']  # 刪除「金額」那一行
+            df.columns = df.iloc[0]  
+            df = df[1:].reset_index(drop=True)  
+            df = df[df[df.columns[0]] != '金額']
         else:
             print(" 表格行數不足無法處理欄位名稱")
             return None
         path = f"/content/{stock_id}_現金流量表.csv"
         df.to_csv(path, index=False, encoding="utf-8-sig")
         return path
-        # print(f"✅ 已匯出：{stock_id}_現金流量表.csv") # Commented out this line
 
 
-    def fetch_ratio_sheet(stock_id: str): # Corrected function name
+
+    def fetch_ratio_sheet(stock_id: str): 
         url = f'https://goodinfo.tw/tw/StockFinDetail.asp?RPT_CAT=XX_M_QUAR_ACC&STOCK_ID={stock_id}'
         res = requests.get(url, headers=headers)
         res.encoding = 'utf-8'
@@ -189,22 +180,21 @@ def crawl_financial_data(stock_id):
         df = pd.DataFrame(data)
 
         if len(df) > 2:
-            df.columns = df.iloc[0]  # 保留表頭（第一列）作為欄位名稱
-            df = df[1:].reset_index(drop=True)  # 從第三列開始取數據
-            df = df[df[df.columns[0]] != '金額']  # 刪除「金額」那一行
+            df.columns = df.iloc[0]  
+            df = df[1:].reset_index(drop=True)  
+            df = df[df[df.columns[0]] != '金額']  
         else:
             print(" 表格行數不足無法處理欄位名稱")
             return None
         path = f"/content/{stock_id}_財務比率表.csv"
         df.to_csv(path, index=False, encoding="utf-8-sig")
         return path
-        # print(f"✅ 已匯出：{stock_id}_財務比率表.csv") # Commented out this line
 
 
     def crawl_all_statements(stock_id):
         files = []
         for func in [
-            fetch_balance_sheet_with_cookie, # Corrected function name
+            fetch_balance_sheet_with_cookie, 
             fetch_income_statement,
             fetch_cashflow_sheet,
             fetch_ratio_sheet
@@ -216,8 +206,6 @@ def crawl_financial_data(stock_id):
 
     return crawl_all_statements(stock_id) # Call the inner function
 
-
-# ---------------- Flask Routes ----------------
 @app.route('/', methods=['GET'])
 def index(): return 'hello!'
 
@@ -240,11 +228,10 @@ def handle_message(event):
         line_bot_api = MessagingApi(api_client)
 
         if text.startswith("分析:"):
-
             _, stock_id, topic = text.split(":")
             paths = crawl_financial_data(stock_id)
             uploaded = [genai.upload_file(p) for p in paths]
-                # 根據 topic 組 prompt
+            
             prompts = {
                     'summary': (
                         "根據以下四份報表，請用條列方式回答：\n"
@@ -284,7 +271,6 @@ def handle_message(event):
             user_states[user_id] = None
             return
 
-        # 1. Show main menu if no mode and input is not a mode trigger
         if mode is None and text not in ["功能:分析", "功能:找尋"]:
             reply_msgs.append(
                 TemplateMessage(
@@ -303,7 +289,6 @@ def handle_message(event):
             line_bot_api.reply_message(ReplyMessageRequest(reply_token=event.reply_token, messages=reply_msgs))
             return
 
-        # 2. Mode selection
         if text == "功能:分析":
             user_states[user_id] = 'analyze'
             line_bot_api.reply_message(
@@ -322,7 +307,7 @@ def handle_message(event):
                 )
             )
             return
-        # 3. Analyze mode: user enters stock ID
+
         if mode == 'analyze' and re.fullmatch(r"\d+", text):
             stock_id = text
             paths = crawl_financial_data(stock_id)
@@ -376,7 +361,7 @@ def handle_message(event):
                 )
             user_states[user_id] = None
             return
-         # 4. Find mode: show URLs after entering company ID
+
         if mode == 'find' and re.fullmatch(r"\d+", text):
             stock_id = text
             buttons = TemplateMessage(
@@ -401,7 +386,7 @@ def handle_message(event):
             user_states[user_id] = None
             return
 
-        # 6. Fallback: reset and show main menu
+
         user_states[user_id] = None
         buttons = TemplateMessage(
             alt_text="主選單",
