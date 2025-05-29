@@ -1,0 +1,7 @@
+Flask
+line-bot-sdk==3.4.0
+requests
+beautifulsoup4
+lxml
+pandas
+google-generativeai
